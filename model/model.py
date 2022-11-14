@@ -44,7 +44,7 @@ class ConvModel(nn.Module):
 class SimCLR(object):
 
     def __init__(self, *args, **kwargs):
-        self.args = kwargs['args']
+        self.args = kwargs
         self.model = kwargs['model'].to(self.args.device)
         self.optimizer = kwargs['optimizer']
         self.scheduler = kwargs['scheduler']
