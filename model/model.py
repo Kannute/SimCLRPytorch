@@ -43,32 +43,32 @@ class ConvModel(nn.Module):
 
 class SimCLR(object):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
+        self.model = kwargs['model'].to(kwargs.get('device'))
         self.args = kwargs
-        self.model = kwargs['model'].to(self.args.device)
         self.optimizer = kwargs['optimizer']
         self.scheduler = kwargs['scheduler']
         self.writer = SummaryWriter()
         logging.basicConfig(filename=os.path.join(self.writer.log_dir, 'training.log'), level=logging.DEBUG)
-        self.criterion = torch.nn.CrossEntropyLoss().to(self.args.device)
+        self.criterion = torch.nn.CrossEntropyLoss().to(self.args.get('device'))
 
     def train(self, train_loader):
 
-        scaler = GradScaler(enabled=self.args.fp16_precision)
+        scaler = GradScaler(enabled=self.args.get('fp16_precision'))
 
         n_iter = 0
-        logging.info(f"Start SimCLR training for {self.args.epochs} epochs.")
-        logging.info(f"Training with gpu: {self.args.disable_cuda}.")
-        for epoch_counter in range(self.args.epochs):
+        logging.info(f"Start SimCLR training for {self.args.get('epochs')} epochs.")
+        logging.info(f"Training with gpu: {self.args.get('disable_cuda')}.")
+        for epoch_counter in range(self.args.get('epochs')):
             g = torch.Generator()
             g.manual_seed(0)
             for images, labels in tqdm((train_loader)):
-                images = torch.cat(images, dim=0)
-                # labels = labels[torch.randperm(labels.size()[0], generator=g)] # Jesli zakomentowac ta linijke to labelki nie sa shufflowane dostaje model ktory uczy sie w sposob supervised.
+                images = torch.cat((images, images), dim=0)
+                labels = labels[torch.randperm(labels.size()[0], generator=g)]
                 labels = torch.cat((labels, labels), dim=0)
 
-                images = images.to(self.args.device)
-                labels = labels.to(self.args.device)
+                images = images.to(self.args.get('device'))
+                labels = labels.to(self.args.get('device'))
                 output = self.model(images)
                 loss = self.criterion(output, labels)
 
@@ -79,7 +79,7 @@ class SimCLR(object):
                 scaler.step(self.optimizer)
                 scaler.update()
 
-                if n_iter % self.args.log_every_n_steps == 0:
+                if n_iter % self.args.get('log_every_n_steps') == 0:
                     top1, top5 = accuracy(output, labels, topk=(1, 5))
                     self.writer.add_scalar('loss', loss, global_step=n_iter)
                     self.writer.add_scalar('acc/top1', top1[0], global_step=n_iter)
@@ -90,4 +90,4 @@ class SimCLR(object):
             # warmup for the first 10 epochs
             if epoch_counter >= 10:
                 self.scheduler.step()
-            logging.debug(f"Epoch: {epoch_counter}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
+            logging.debug(f"Epoch: {epoch_counter}\tLoss: {loss}\tBest ACC: {top1[0]}\t 10 Best Acc: {top5[0]}")
