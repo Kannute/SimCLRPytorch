@@ -52,7 +52,7 @@ class SimCLR(object):
         logging.basicConfig(filename=os.path.join(self.writer.log_dir, 'training.log'), level=logging.DEBUG)
         self.criterion = torch.nn.CrossEntropyLoss().to(self.args.get('device'))
 
-    def train(self, train_loader):
+    def train(self, train_loader, shuffle: bool = True):
 
         scaler = GradScaler(enabled=self.args.get('fp16_precision'))
 
@@ -64,7 +64,8 @@ class SimCLR(object):
             g.manual_seed(0)
             for images, labels in tqdm((train_loader)):
                 images = torch.cat((images, images), dim=0)
-                labels = labels[torch.randperm(labels.size()[0], generator=g)]
+                if shuffle:
+                    labels = labels[torch.randperm(labels.size()[0], generator=g)]
                 labels = torch.cat((labels, labels), dim=0)
 
                 images = images.to(self.args.get('device'))

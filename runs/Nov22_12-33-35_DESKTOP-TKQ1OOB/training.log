@@ -1,0 +1,11 @@
+INFO:root:Start SimCLR training for 100 epochs.
+INFO:root:Training with gpu: None.
+DEBUG:root:Epoch: 0	Loss: 0.22681069374084473	Best ACC: 94.53125	 10 Best Acc: 100.0
+INFO:root:Start SimCLR training for 100 epochs.
+INFO:root:Training with gpu: None.
+INFO:root:Start SimCLR training for 100 epochs.
+INFO:root:Training with gpu: None.
+INFO:root:Start SimCLR training for 100 epochs.
+INFO:root:Training with gpu: None.
+INFO:root:Start SimCLR training for 100 epochs.
+INFO:root:Training with gpu: None.
