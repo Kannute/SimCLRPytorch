@@ -67,10 +67,13 @@ class SimCLR(object):
                 if shuffle:
                     labels = labels[torch.randperm(labels.size()[0], generator=g)]
                 labels = torch.cat((labels, labels), dim=0)
-
+#czy shuffle na pewno dziala?
+#jakie bedzie acc validacyjne jesli shufflawanie bedzie wylaczone w pretreningu. Bylo bardzo wysokie z tego co pamietam
+#
                 images = images.to(self.args.get('device'))
                 labels = labels.to(self.args.get('device'))
                 output = self.model(images)
+                #output - podejrzane
                 loss = self.criterion(output, labels)
 
                 self.optimizer.zero_grad()
