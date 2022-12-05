@@ -30,12 +30,13 @@ def accuracy(output, target, topk=(1,)):
 
 
 class ConvModel(nn.Module):
-    def __init__(self, out_dim):
+    def __init__(self, out_dim, dataset: str = ''):
         super(ConvModel, self).__init__()
         self.resnet_model = models.resnet18(pretrained=False, num_classes=out_dim)
 
         self.backbone = self.resnet_model
-        self.backbone.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        if dataset.upper() == 'MNIST':
+            self.backbone.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
     def forward(self, x):
         return self.backbone(x)
@@ -79,7 +80,6 @@ class SimCLR(object):
 
                 scaler.step(self.optimizer)
                 scaler.update()
-
                 if n_iter % self.args.get('log_every_n_steps') == 0:
                     top1, top5 = accuracy(output, labels, topk=(1, 5))
                     self.writer.add_scalar('loss', loss, global_step=n_iter)
@@ -91,4 +91,6 @@ class SimCLR(object):
             # warmup for the first 10 epochs
             if epoch_counter >= 10:
                 self.scheduler.step()
-            logging.debug(f"Epoch: {epoch_counter}\tLoss: {loss}\tBest ACC: {top1[0]}\t 10 Best Acc: {top5[0]}")
+            logging.debug(f"Epoch: {epoch_counter}\tLoss: {loss}\tBest ACC: {top1[0]}")
+
+#%%
