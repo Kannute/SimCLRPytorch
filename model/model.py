@@ -93,4 +93,31 @@ class SimCLR(object):
                 self.scheduler.step()
             logging.debug(f"Epoch: {epoch_counter}\tLoss: {loss}\tBest ACC: {top1[0]}")
 
+    def train_head(self, train_loader):
+        # TODO
+        # to samo co w ostatniej komórce run (tylko dodać backwards step + optimizer)
+        total = 0
+        scaler = GradScaler(enabled=self.args.get('fp16_precision'))
+        n_iter = 0
+        writer = SummaryWriter()
+        logging.basicConfig(filename=os.path.join(writer.log_dir, 'training.log'), level=logging.DEBUG)
+        criterion = torch.nn.CrossEntropyLoss().to(self.args.get('device'))
+        self.model.eval()
+        with torch.no_grad():
+            for images, labels in tqdm(train_loader):
+                images = images.to(self.args.get('device'))
+                labels = labels.to(self.args.get('device'))
+                output = self.model(images)
+                loss = criterion(output, labels)
+                top1, top5 = accuracy(output, labels, topk=(1, 5))
+                writer.add_scalar('loss', loss, global_step=n_iter)
+                writer.add_scalar('acc/top1', top1[0], global_step=n_iter)
+                writer.add_scalar('acc/top5', top5[0], global_step=n_iter)
+                n_iter += 1
+                self.optimizer.zero_grad()
+
+                scaler.scale(loss).backward()
+
+                scaler.step(self.optimizer)
+                scaler.update()
 #%%
