@@ -1,3 +1,6 @@
+#%%
+
+#%%
 import torch.nn as nn
 import torchvision.models as models
 
@@ -8,6 +11,8 @@ import torch
 from torch.cuda.amp import GradScaler
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+
+import matplotlib.pyplot as plt
 
 torch.manual_seed(0)
 
@@ -42,7 +47,7 @@ class ConvModel(nn.Module):
         return self.backbone(x)
 
 
-class SimCLR(object):
+class PreTrainer(object):
 
     def __init__(self, **kwargs):
         self.model = kwargs['model'].to(kwargs.get('device'))
@@ -61,6 +66,9 @@ class SimCLR(object):
         logging.info(f"Start SimCLR training for {self.args.get('epochs')} epochs.")
         logging.info(f"Training with gpu: {self.args.get('disable_cuda')}.")
         for epoch_counter in range(self.args.get('epochs')):
+
+
+
             g = torch.Generator()
             g.manual_seed(0)
             for images, labels in tqdm((train_loader)):
@@ -68,10 +76,13 @@ class SimCLR(object):
                 if shuffle:
                     labels = labels[torch.randperm(labels.size()[0], generator=g)]
                 labels = torch.cat((labels, labels), dim=0)
-
+#czy shuffle na pewno dziala?
+#jakie bedzie acc validacyjne jesli shufflawanie bedzie wylaczone w pretreningu. Bylo bardzo wysokie z tego co pamietam
+#
                 images = images.to(self.args.get('device'))
                 labels = labels.to(self.args.get('device'))
                 output = self.model(images)
+                #output - podejrzane
                 loss = self.criterion(output, labels)
 
                 self.optimizer.zero_grad()
@@ -80,6 +91,17 @@ class SimCLR(object):
 
                 scaler.step(self.optimizer)
                 scaler.update()
+
+                ''' zaimplementować wyliczanie accuracy'''
+                top1kacc = accuracy(output, labels, topk=1)
+
+                if (top1kacc>95 or (epoch_counter>50 and top1kacc>80)):
+                    print("Early stopping. Stopped on epoch: ", epoch_counter, "\naccuracy: ", top1kacc)
+                    break  # koniec uczenia
+
+
+
+
                 if n_iter % self.args.get('log_every_n_steps') == 0:
                     top1, top5 = accuracy(output, labels, topk=(1, 5))
                     self.writer.add_scalar('loss', loss, global_step=n_iter)
@@ -93,31 +115,87 @@ class SimCLR(object):
                 self.scheduler.step()
             logging.debug(f"Epoch: {epoch_counter}\tLoss: {loss}\tBest ACC: {top1[0]}")
 
-    def train_head(self, train_loader):
-        # TODO
-        # to samo co w ostatniej komórce run (tylko dodać backwards step + optimizer)
-        total = 0
-        scaler = GradScaler(enabled=self.args.get('fp16_precision'))
-        n_iter = 0
-        writer = SummaryWriter()
-        logging.basicConfig(filename=os.path.join(writer.log_dir, 'training.log'), level=logging.DEBUG)
-        criterion = torch.nn.CrossEntropyLoss().to(self.args.get('device'))
-        self.model.eval()
-        with torch.no_grad():
-            for images, labels in tqdm(train_loader):
-                images = images.to(self.args.get('device'))
-                labels = labels.to(self.args.get('device'))
-                output = self.model(images)
-                loss = criterion(output, labels)
-                top1, top5 = accuracy(output, labels, topk=(1, 5))
-                writer.add_scalar('loss', loss, global_step=n_iter)
-                writer.add_scalar('acc/top1', top1[0], global_step=n_iter)
-                writer.add_scalar('acc/top5', top5[0], global_step=n_iter)
-                n_iter += 1
-                self.optimizer.zero_grad()
+class HeadTrainer:
+    def __init__(self, train_dataset, test_dataset, batch_size=256):
+        self.batch_size = batch_size
+        self.train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-                scaler.scale(loss).backward()
+    def train(self, model, optimizer, loss_fn=torch.nn.functional.cross_entropy, n_epochs=100):
+        self.logs = {'train_loss': [], 'test_loss': [], 'train_accuracy': [], 'test_accuracy': []}
+        model = model.to(self.device)
+        correct, numel = 0, 0
+        for e in range(1, n_epochs + 1):
+            model.train()#z tego wynika, że uczymy model ktory jest klasy nnSequential, nie jest obiektem klasy SimCLR
+            for x, y in self.train_loader:
+                x = x.to(self.device)
+                y = y.to(self.device)
+                optimizer.zero_grad()
+                output = model(x)
+                y_pred = torch.argmax(output, dim=1)
+                correct += torch.sum(y_pred == y).item()
+                numel += self.batch_size
+                loss = loss_fn(output, y)
+                loss.backward()
+                optimizer.step()
 
-                scaler.step(self.optimizer)
-                scaler.update()
-#%%
+            self.logs['train_loss'].append(loss.item())
+            self.logs['train_accuracy'].append(correct / numel)
+            correct, numel = 0, 0
+
+            model.eval()
+            with torch.no_grad():
+                for x_test, y_test in self.test_loader:
+                    x_test = x_test.to(self.device)
+                    y_test = y_test.to(self.device)
+                    output = model(x_test)
+                    y_pred = torch.argmax(output, dim=1)
+                    correct += torch.sum(y_pred == y_test).item()
+                    numel += self.batch_size
+                loss = loss_fn(output, y_test)
+
+            self.logs['test_loss'].append(loss.item())
+            self.logs['test_accuracy'].append(correct / numel)
+            correct, numel = 0, 0
+
+        return self.logs
+
+
+def show_results(orientation='horizontal', accuracy_bottom=None, loss_top=None, **histories):
+    if orientation == 'horizontal':
+        f, ax = plt.subplots(1, 2, figsize=(16, 5))
+    else:
+        f, ax = plt.subplots(2, 1, figsize=(16, 16))
+    for i, (name, h) in enumerate(histories.items()):
+        if len(histories) == 1:
+            ax[0].set_title("Best test accuracy: {:.2f}% (train: {:.2f}%)".format(
+                max(h['test_accuracy']) * 100,
+                max(h['train_accuracy']) * 100
+            ))
+        else:
+            ax[0].set_title("Accuracy")
+        ax[0].plot(h['train_accuracy'], color='C%s' % i, linestyle='--', label='%s train' % name)
+        ax[0].plot(h['test_accuracy'], color='C%s' % i, label='%s test' % name)
+        ax[0].set_xlabel('epochs')
+        ax[0].set_ylabel('accuracy')
+        if accuracy_bottom:
+            ax[0].set_ylim(bottom=accuracy_bottom)
+        ax[0].legend()
+
+        if len(histories) == 1:
+            ax[1].set_title("Minimal train loss: {:.4f} (test: {:.4f})".format(
+                min(h['train_loss']),
+                min(h['test_loss'])
+            ))
+        else:
+            ax[1].set_title("Loss")
+        ax[1].plot(h['train_loss'], color='C%s' % i, linestyle='--', label='%s train' % name)
+        ax[1].plot(h['test_loss'], color='C%s' % i, label='%s test' % name)
+        ax[1].set_xlabel('epochs')
+        ax[1].set_ylabel('loss')
+        if loss_top:
+            ax[1].set_ylim(top=loss_top)
+        ax[1].legend()
+
+    plt.show()
