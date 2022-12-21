@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt
 
 torch.manual_seed(0)
 
-
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
     with torch.no_grad():
@@ -67,8 +66,6 @@ class PreTrainer(object):
         logging.info(f"Training with gpu: {self.args.get('disable_cuda')}.")
         for epoch_counter in range(self.args.get('epochs')):
 
-
-
             g = torch.Generator()
             g.manual_seed(0)
             for images, labels in tqdm((train_loader)):
@@ -76,31 +73,22 @@ class PreTrainer(object):
                 if shuffle:
                     labels = labels[torch.randperm(labels.size()[0], generator=g)]
                 labels = torch.cat((labels, labels), dim=0)
-#czy shuffle na pewno dziala?
-#jakie bedzie acc validacyjne jesli shufflawanie bedzie wylaczone w pretreningu. Bylo bardzo wysokie z tego co pamietam
-#
                 images = images.to(self.args.get('device'))
                 labels = labels.to(self.args.get('device'))
                 output = self.model(images)
-                #output - podejrzane
                 loss = self.criterion(output, labels)
 
                 self.optimizer.zero_grad()
-
                 scaler.scale(loss).backward()
 
                 scaler.step(self.optimizer)
                 scaler.update()
 
-                ''' zaimplementować wyliczanie accuracy'''
-                top1kacc = accuracy(output, labels, topk=1)
-
-                if (top1kacc>95 or (epoch_counter>50 and top1kacc>80)):
-                    print("Early stopping. Stopped on epoch: ", epoch_counter, "\naccuracy: ", top1kacc)
-                    break  # koniec uczenia
-
-
-
+                # top1kacc = accuracy(output, labels)
+                #
+                # if (top1kacc[0]>95 or (epoch_counter>50 and top1kacc[0]>80)):
+                #     print("Early stopping. Stopped on epoch: ", epoch_counter, "\naccuracy: ", top1kacc)
+                #     break  # koniec uczenia
 
                 if n_iter % self.args.get('log_every_n_steps') == 0:
                     top1, top5 = accuracy(output, labels, topk=(1, 5))
@@ -122,12 +110,12 @@ class HeadTrainer:
         self.test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    def train(self, model, optimizer, loss_fn=torch.nn.functional.cross_entropy, n_epochs=100):
+    def train(self, model, optimizer, loss_fn=torch.nn.CrossEntropyLoss, n_epochs=100):
         self.logs = {'train_loss': [], 'test_loss': [], 'train_accuracy': [], 'test_accuracy': []}
         model = model.to(self.device)
         correct, numel = 0, 0
         for e in range(1, n_epochs + 1):
-            model.train()#z tego wynika, że uczymy model ktory jest klasy nnSequential, nie jest obiektem klasy SimCLR
+            model.train()
             for x, y in self.train_loader:
                 x = x.to(self.device)
                 y = y.to(self.device)
