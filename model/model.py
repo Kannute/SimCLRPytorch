@@ -1,6 +1,3 @@
-#%%
-
-#%%
 import torch.nn as nn
 import torchvision.models as models
 
@@ -236,3 +233,5 @@ def show_results(orientation='horizontal', accuracy_bottom=None, loss_top=None, 
         ax[1].legend()
 
     plt.show()
+
+#%%
